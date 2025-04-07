@@ -1,4 +1,4 @@
-name: TOOLBOXLAP- LiteManager
+name:  LiteManager
 
 on:
   workflow_dispatch:
@@ -12,10 +12,10 @@ jobs:
     steps:
       - name: Downloading & Installing Essentials
         run: |
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/tollboxlap@9/tollboxlap@9/refs/heads/main/Downloads.bat” -OutFile "Downloads.bat"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/tollboxlap09/tollboxlap09/refs/heads/main/Downloads.bat" -OutFile "Downloads.bat"
           cmd /c Downloads.bat
 
-      - name: TOOLBOXLAP
+      - name: Connect to LiteManager
         run: cmd /c show.bat
 
       - name: Time Counter
