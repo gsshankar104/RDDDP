@@ -1,93 +1,100 @@
-name: LiteManager Session (Experimental)
+name: Experimental RDP with Artifact Backup
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Start LiteManager Session
-    runs-on: windows-latest # Use a Windows runner
-
-    # IMPORTANT: GitHub Actions have a maximum job runtime (e.g., 6 hours).
-    # Setting a very high timeout doesn't bypass this limit.
-    # Using Actions for long interactive sessions may violate GitHub's Terms of Service.
-    # Use this workflow at your own risk.
-    timeout-minutes: 350 # Set slightly less than the max job timeout (usually 360 minutes / 6 hours)
+    name: Start RDP Session (HIGH RISK - USE WITH CAUTION)
+    runs-on: windows-latest
+    timeout-minutes: 350 # Max ~6 hours job limit applies regardless
 
     steps:
+      - name: Check for Existing Backup Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: litemanager-session-data
+          path: C:\restore_temp # Download to a temporary location
+        continue-on-error: true # Important: Continue even if no artifact exists on first run
+
+      - name: Restore Data from Backup (If Exists)
+        # *** CRITICAL: You MUST figure out the CORRECT paths where LiteManager stores its data ***
+        # *** The paths below are GUESSES and likely WRONG. Adjust them! ***
+        run: |
+          if (Test-Path C:\restore_temp) {
+            echo "Backup found. Attempting to restore data..."
+            # Example: Copy restored data back to potential original locations
+            # Adjust these target paths based on LiteManager's actual locations!
+            echo "Restoring to AppData..."
+            Copy-Item -Path C:\restore_temp\AppData\* -Destination "$env:APPDATA\LiteManager" -Recurse -Force -ErrorAction SilentlyContinue
+            echo "Restoring to ProgramData..."
+            Copy-Item -Path C:\restore_temp\ProgramData\* -Destination "$env:ProgramData\LiteManager" -Recurse -Force -ErrorAction SilentlyContinue
+            echo "Restoring to Documents..."
+            Copy-Item -Path C:\restore_temp\Documents\* -Destination "$env:UserProfile\Documents\LiteManager" -Recurse -Force -ErrorAction SilentlyContinue
+            # Add more copy commands if LiteManager uses other locations
+
+            echo "Data restore attempt finished. Cleaning up temp restore folder..."
+            Remove-Item -Path C:\restore_temp -Recurse -Force
+          } else {
+            echo "No previous backup artifact found. Starting fresh session."
+          }
+        shell: pwsh
+        # Important: This only restores FILES, not the running state of applications.
+
       - name: Download and Setup LiteManager
         run: |
           echo "Downloading required files..."
-          # Using PowerShell's Invoke-WebRequest for potentially better error handling
           Invoke-WebRequest -Uri "https://raw.githubusercontent.com/tollboxlap09/tollboxlap09/refs/heads/main/Downloads.bat" -OutFile "Downloads.bat"
-          if ($?) {
-              echo "Download successful."
-          } else {
-              echo "Download FAILED."
-              exit 1 # Exit the workflow if download fails
-          }
+          if (!$?) { echo "Download FAILED."; exit 1 }
 
           echo "Running setup script (Downloads.bat)..."
           cmd /c Downloads.bat
-          # You might want to add error checking here if Downloads.bat provides exit codes
           echo "Setup script finished."
-        # Use PowerShell for this step for better control and Invoke-WebRequest
         shell: pwsh
 
       - name: Start LiteManager and Display Connection Info
         run: |
           echo "Starting LiteManager connection process (show.bat)..."
           echo "--------------------------------------------------------------------"
-          echo "IMPORTANT: Check the logs below carefully."
-          echo "The 'show.bat' script should print the necessary connection details"
-          echo "(like Server ID, Password, IP Address, or a Tunnel URL if using ngrok/similar)."
-          echo "You need this information to connect using your LiteManager client."
-          echo "The workflow will keep running as long as this step is active"
-          echo "(or until the job timeout limit of ~6 hours is reached)."
+          echo "IMPORTANT: Check logs below for connection details (ID, Pass, URL)."
+          echo "Connect using your LiteManager client."
+          echo "Session will run until timeout (~6 hours) or manual cancellation."
+          echo "Using GitHub Actions this way violates ToS and risks account suspension."
           echo "--------------------------------------------------------------------"
-
-          # Execute show.bat.
-          # CRITICAL: For the session to stay alive without 'loop.bat',
-          # this 'show.bat' script must start the LiteManager server/process
-          # AND keep running (remain active in the foreground).
-          # If show.bat just starts a background process and then exits immediately,
-          # this workflow step will end, and the job will stop prematurely.
+          # CRITICAL: show.bat must keep the process running in the foreground.
           cmd /c show.bat
+          # If show.bat exits, the job will end. Consider a sleep loop ONLY if necessary
+          # and if show.bat starts the server in the background.
+          # Example: echo "show.bat finished? Starting keep-alive sleep..."; while ($true) { Start-Sleep -Seconds 60 }
+        shell: cmd # Use cmd shell if show.bat requires it
 
-          # If show.bat exits too early, the job will stop.
-          # The old 'loop.bat' was a workaround for this. A cleaner way (if needed)
-          # would be for show.bat to handle the waiting, or add a PowerShell loop
-          # here AFTER show.bat starts the main process in the background:
-          # Example: echo "show.bat finished, starting keep-alive sleep..."
-          # Example: while ($true) { Start-Sleep -Seconds 60 }
-          # But it's best if show.bat itself manages the lifecycle correctly.
+      # --- Data Backup Section ---
+      - name: Backup Specific Data to Artifacts
+        # 'always()' ensures this runs even if the job is cancelled or times out early
+        if: always()
+        run: |
+          echo "Attempting to backup specific configuration or data files..."
+          # Create a directory structure within the backup folder
+          mkdir C:\backup_data\AppData -ErrorAction SilentlyContinue
+          mkdir C:\backup_data\ProgramData -ErrorAction SilentlyContinue
+          mkdir C:\backup_data\Documents -ErrorAction SilentlyContinue
 
-      # --- Data Backup Section (Placeholder - Add later if needed) ---
-      # This section shows how you *might* save data *after* the session ends.
-      # It DOES NOT save the live state.
+          # *** CRITICAL: You MUST figure out the CORRECT paths LiteManager uses ***
+          # *** The paths below are GUESSES - Replace with actual paths! ***
+          echo "Copying potential LiteManager data (adjust paths as needed)..."
+          Copy-Item -Path "$env:APPDATA\LiteManager\*" -Destination C:\backup_data\AppData\ -Recurse -ErrorAction SilentlyContinue
+          Copy-Item -Path "$env:ProgramData\LiteManager\*" -Destination C:\backup_data\ProgramData\ -Recurse -ErrorAction SilentlyContinue
+          Copy-Item -Path "$env:UserProfile\Documents\LiteManager\*" -Destination C:\backup_data\Documents\ -Recurse -ErrorAction SilentlyContinue
+          # Add more copy commands if needed for other locations
 
-      # - name: Backup Specific Data (Example using Artifacts)
-      #   # 'always()' ensures this runs even if the job is cancelled or times out
-      #   if: always()
-      #   run: |
-      #     echo "Attempting to backup specific configuration or data files..."
-      #     # Create a temporary directory for backup
-      #     mkdir C:\backup_data
-      #     # *** IMPORTANT: You need to know EXACTLY which files/folders LiteManager uses ***
-      #     # *** The paths below are JUST GUESSES - Replace with actual paths! ***
-      #     echo "Copying potential LiteManager data (adjust paths as needed)..."
-      #     # Example: Copying common locations - these might be wrong for LiteManager!
-      #     copy "$env:APPDATA\LiteManager\*" C:\backup_data\ -Recurse -ErrorAction SilentlyContinue
-      #     copy "$env:ProgramData\LiteManager\*" C:\backup_data\ -Recurse -ErrorAction SilentlyContinue
-      #     copy "$env:UserProfile\Documents\LiteManager\*" C:\backup_data\ -Recurse -ErrorAction SilentlyContinue
-      #     echo "Backup copy attempt finished."
-      #   shell: pwsh
+          echo "Backup copy attempt finished."
+        shell: pwsh
 
-      # - name: Upload Backup as Artifact
-      #   # 'always()' ensures this runs even if the job is cancelled or times out
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: litemanager-session-data # Name of the artifact zip file
-      #     path: C:\backup_data # The folder to upload
-      #     retention-days: 1 # How long to keep the artifact (e.g., 1 day)
+      - name: Upload Backup as Artifact
+        # 'always()' ensures this runs even if the job is cancelled or times out early
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: litemanager-session-data # Must match the download name
+          path: C:\backup_data # The folder containing structured backup
+          retention-days: 5 # Keep artifact for a few days
